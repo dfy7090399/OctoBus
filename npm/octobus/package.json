@@ -1,8 +1,8 @@
 {
   "name": "@chaitin-ai/octobus",
-  "version": "0.5.0",
+  "version": "0.1.0",
   "description": "OctoBus local daemon and CLI.",
-  "license": "LGPL-3.0-only",
+  "license": "GPL-3.0",
   "bin": {
     "octobus": "bin/octobus.js"
   },
@@ -29,12 +29,12 @@
     "node": ">=20"
   },
   "optionalDependencies": {
-    "@chaitin-ai/octobus-linux-x64": "0.5.0",
-    "@chaitin-ai/octobus-linux-arm64": "0.5.0",
-    "@chaitin-ai/octobus-darwin-x64": "0.5.0",
-    "@chaitin-ai/octobus-darwin-arm64": "0.5.0",
-    "@chaitin-ai/octobus-win32-x64": "0.5.0",
-    "@chaitin-ai/octobus-win32-arm64": "0.5.0"
+    "@chaitin-ai/octobus-linux-x64": "0.1.0",
+    "@chaitin-ai/octobus-linux-arm64": "0.1.0",
+    "@chaitin-ai/octobus-darwin-x64": "0.1.0",
+    "@chaitin-ai/octobus-darwin-arm64": "0.1.0",
+    "@chaitin-ai/octobus-win32-x64": "0.1.0",
+    "@chaitin-ai/octobus-win32-arm64": "0.1.0"
   },
   "publishConfig": {
     "access": "public",
