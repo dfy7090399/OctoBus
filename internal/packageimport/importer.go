@@ -32,11 +32,20 @@ type Options struct {
 	Offline   bool   `json:"offline"`
 	Reinstall bool   `json:"reinstall"`
 	Build     string `json:"build"`
+	Recursive bool   `json:"recursive"`
 }
 
 type Result struct {
 	Service  domain.Service
 	Manifest domain.ServiceManifest
+}
+
+type RecursiveResult struct {
+	Services           []domain.Service
+	ServiceCount       int
+	Manifests          map[string]domain.ServiceManifest
+	RestartedInstances map[string][]string
+	RestartErrors      map[string][]string
 }
 
 type preparedSource struct {
