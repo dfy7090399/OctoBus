@@ -108,16 +108,16 @@
   - 验收标准：单 service import 测试全通过；helper 不引入数据库 schema 变化。
   - 完成总结：已将 `Importer.Import` 中的单 service 流程拆为内部 helper：`validatePreparedService` 负责 manifest/bin/runtime mode 预校验，`prepareServiceRuntime` 负责 runtime 目录和 dependency preparation，`compileServiceDescriptor` 负责 descriptor 编译，`stageServiceCommit` 负责 staging commit 目录组装，`buildImportedService` 负责 `domain.Service` 组装和 schema path 校验，`commitImportedService` 负责 artifact 替换与 store upsert。未改变 public API、store schema 或 artifact layout。补充单 service 非回归断言，确认 `Result.Manifest` 和默认 `ServiceRoot` 仍保持原行为。验证命令：`go test ./internal/packageimport`，结果通过。
 
-- [ ] 3.2 实现 `Importer.ImportRecursive`
+- [x] 3.2 实现 `Importer.ImportRecursive`
   - 依赖：3.1、2.2。
   - 工作内容：实现一次 source prepare/build/runtime preparation，多 service discovery 和预校验，预校验全部成功后按 service root 排序逐个提交。
   - 可并行子任务：
-    - [ ] 可并行：实现一次 distribution 准备和 runtime base 复用。
-    - [ ] 可并行：实现每个 discovered service 的 manifest、ID、bin、schema、descriptor 预校验。
-    - [ ] 可并行：实现按 service root 提交和 `PackageSource` 拼接。
+    - [x] 可并行：实现一次 distribution 准备和 runtime base 复用。
+    - [x] 可并行：实现每个 discovered service 的 manifest、ID、bin、schema、descriptor 预校验。
+    - [x] 可并行：实现按 service root 提交和 `PackageSource` 拼接。
   - 测试方案：`go test ./internal/packageimport`。
   - 验收标准：成功导入多个 service；`ID`、`Name`、`PackageSource`、`ServiceRoot`、`NodeEntry`、schema path、methods metadata 正确。
-  - 完成总结：待完成。
+  - 完成总结：已将 `Importer.ImportRecursive` 从占位实现替换为核心成功路径：同一 staging 中只执行一次 source prepare、build 和 runtime dependency preparation；通过 `discoverServiceRoots` 获取稳定 service root 列表；逐个预校验 manifest、`service.json.name` service ID、重复 ID、root `package.json bin`、config/secret schema，并为每个 service 编译独立 descriptor；预校验成功后按 service root 顺序提交各 service，`PackageSource` 使用 base source 拼接 discovered service root。新增测试覆盖多 service package 成功导入、`source//nested` 作为 scan root 只导入子树、package root 自身为 service root，并断言 ID、Name、PackageSource、ServiceRoot、NodeEntry、schema path 和 method metadata。验证命令：`go test ./internal/packageimport`，结果通过。
 
 - [ ] 3.3 完成 recursive failure 和零提交语义
   - 依赖：3.2。

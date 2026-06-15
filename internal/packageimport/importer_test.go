@@ -92,22 +92,74 @@ message ListResponse { string text = 1; }
 	}
 }
 
-func TestImporterRecursiveImportSkeletonKeepsStoreEmpty(t *testing.T) {
+func TestImporterImportRecursiveImportsMultiServicePackage(t *testing.T) {
 	dataDir, s := openTestStore(t)
 	pkg := writeMultiServiceTestPackage(t, t.TempDir())
-	res, err := (&Importer{DataDir: dataDir, Store: s}).ImportRecursive(context.Background(), Options{Source: pkg.Root, Recursive: true, Offline: true})
-	if err == nil || !strings.Contains(err.Error(), "recursive import is not implemented") {
-		t.Fatalf("ImportRecursive error=%v want not implemented", err)
-	}
-	if len(res.Services) != 0 || res.ServiceCount != 0 {
-		t.Fatalf("unexpected recursive result before implementation: %+v", res)
-	}
-	services, err := s.ListServices(context.Background())
+	res, err := (&Importer{DataDir: dataDir, Store: s}).ImportRecursive(context.Background(), Options{Source: pkg.Root, Recursive: true, Offline: true, Build: "never"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(services) != 0 {
-		t.Fatalf("recursive pre-implementation failure should not commit services: %+v", services)
+	if res.ServiceCount != len(pkg.Services) || len(res.Services) != len(pkg.Services) || len(res.Manifests) != len(pkg.Services) {
+		t.Fatalf("unexpected recursive result: %+v", res)
+	}
+	gotByID := map[string]domain.Service{}
+	for _, svc := range res.Services {
+		gotByID[svc.ID] = svc
+	}
+	for _, want := range pkg.Services {
+		svc, ok := gotByID[want.ID]
+		if !ok {
+			t.Fatalf("service %s missing from result: %+v", want.ID, res.Services)
+		}
+		if svc.Name != want.ID+" display" || svc.PackageSource != sourceWithServiceRoot(pkg.Root, want.ServiceRoot) || svc.ServiceRoot != want.ServiceRoot || svc.NodeEntry != filepath.Clean(want.NodeEntry) {
+			t.Fatalf("service %s metadata mismatch: %+v", want.ID, svc)
+		}
+		if len(svc.Methods) != 1 || svc.Methods[0].FullName != want.MethodFull {
+			t.Fatalf("service %s methods mismatch: %+v", want.ID, svc.Methods)
+		}
+		for _, path := range []string{svc.PackageArtifactPath, svc.DescriptorPath, svc.ConfigSchemaPath, svc.SecretSchemaPath} {
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("service %s expected artifact %s: %v", want.ID, path, err)
+			}
+		}
+		stored, err := s.GetService(context.Background(), want.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.PackageSource != svc.PackageSource || stored.ServiceRoot != svc.ServiceRoot {
+			t.Fatalf("stored service %s mismatch: %+v", want.ID, stored)
+		}
+	}
+}
+
+func TestImporterImportRecursiveHonorsScanRoot(t *testing.T) {
+	dataDir, s := openTestStore(t)
+	pkg := writeMultiServiceTestPackage(t, t.TempDir())
+	res, err := (&Importer{DataDir: dataDir, Store: s}).ImportRecursive(context.Background(), Options{Source: pkg.Root + "//nested", Recursive: true, Offline: true, Build: "never"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ServiceCount != 1 || len(res.Services) != 1 || res.Services[0].ID != "gamma-service" || res.Services[0].ServiceRoot != "nested/vendor__gamma" {
+		t.Fatalf("unexpected scan-root recursive result: %+v", res)
+	}
+	if _, err := s.GetService(context.Background(), "alpha-service"); err == nil {
+		t.Fatal("service outside scan root was imported")
+	}
+}
+
+func TestImporterImportRecursiveImportsRootService(t *testing.T) {
+	dataDir, s := openTestStore(t)
+	pkg := writeTestPackage(t, t.TempDir(), `{"schema":"chaitin.octobus.service.v1","name":"echo-wrapper","displayName":"Echo Wrapper","proto":{"roots":["proto"],"files":["proto/echo.proto"]}}`)
+	res, err := (&Importer{DataDir: dataDir, Store: s}).ImportRecursive(context.Background(), Options{Source: pkg, Recursive: true, Offline: true, Build: "never"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ServiceCount != 1 || len(res.Services) != 1 {
+		t.Fatalf("unexpected root recursive result: %+v", res)
+	}
+	svc := res.Services[0]
+	if svc.ID != "echo-wrapper" || svc.Name != "Echo Wrapper" || svc.ServiceRoot != "." || svc.PackageSource != pkg {
+		t.Fatalf("root service metadata mismatch: %+v", svc)
 	}
 }
 

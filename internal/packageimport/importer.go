@@ -74,6 +74,13 @@ type compiledServiceDescriptor struct {
 	Result descriptors.CompileResult
 }
 
+type recursiveServiceCandidate struct {
+	ServiceID  string
+	Prepared   preparedSource
+	Service    preparedService
+	Descriptor compiledServiceDescriptor
+}
+
 type BuildPolicy string
 
 const (
@@ -187,6 +194,10 @@ func prepareServiceRuntime(ctx context.Context, prepared preparedSource, staging
 
 func compileServiceDescriptor(staging string, service preparedService) (compiledServiceDescriptor, error) {
 	descriptorPath := filepath.Join(staging, "descriptor.protoset")
+	return compileServiceDescriptorAt(descriptorPath, service)
+}
+
+func compileServiceDescriptorAt(descriptorPath string, service preparedService) (compiledServiceDescriptor, error) {
 	compiled, err := descriptors.Compile(descriptors.CompileRequest{
 		PackageDir:     service.ServiceRootDir,
 		ProtoRoots:     service.Manifest.Proto.Roots,
@@ -300,7 +311,116 @@ func (i *Importer) ImportRecursive(ctx context.Context, opts Options) (Recursive
 	if opts.Name != "" {
 		return RecursiveResult{}, errors.New("name cannot be used with recursive import")
 	}
-	return RecursiveResult{}, errors.New("recursive import is not implemented")
+	baseSource, _, err := splitSourceServiceRoot(opts.Source)
+	if err != nil {
+		return RecursiveResult{}, err
+	}
+	staging := filepath.Join(i.DataDir, "artifacts", "services", ".staging-recursive-import")
+	if err := os.RemoveAll(staging); err != nil {
+		return RecursiveResult{}, err
+	}
+	if err := os.MkdirAll(staging, 0o755); err != nil {
+		return RecursiveResult{}, err
+	}
+	defer os.RemoveAll(staging)
+
+	prepared, err := i.prepareSource(ctx, opts, staging)
+	if err != nil {
+		return RecursiveResult{}, err
+	}
+	policy, err := parseBuildPolicy(opts.Build)
+	if err != nil {
+		return RecursiveResult{}, err
+	}
+	if prepared, err = buildSourcePackage(ctx, prepared, staging, policy, opts.Offline); err != nil {
+		return RecursiveResult{}, err
+	}
+	runtimeDir, err := prepareServiceRuntime(ctx, prepared, staging, opts)
+	if err != nil {
+		return RecursiveResult{}, err
+	}
+	serviceRoots, err := discoverServiceRoots(prepared.PackageDir, prepared.ServiceRoot)
+	if err != nil {
+		return RecursiveResult{}, err
+	}
+	candidates := make([]recursiveServiceCandidate, 0, len(serviceRoots))
+	manifests := make(map[string]domain.ServiceManifest, len(serviceRoots))
+	seen := make(map[string]string, len(serviceRoots))
+	descriptorDir := filepath.Join(staging, "descriptors")
+	for idx, serviceRoot := range serviceRoots {
+		servicePrepared := prepared
+		servicePrepared.ServiceRoot = serviceRoot
+		servicePrepared.PackageSource = sourceWithServiceRoot(baseSource, serviceRoot)
+		service, err := validatePreparedService(servicePrepared)
+		if err != nil {
+			return RecursiveResult{}, fmt.Errorf("validate service %s: %w", serviceRoot, err)
+		}
+		serviceID := service.Manifest.Name
+		if err := domain.ValidateID("service", serviceID); err != nil {
+			return RecursiveResult{}, fmt.Errorf("validate service %s id %q: %w", serviceRoot, serviceID, err)
+		}
+		if previousRoot := seen[serviceID]; previousRoot != "" {
+			return RecursiveResult{}, fmt.Errorf("duplicate service id %q in %s and %s", serviceID, previousRoot, serviceRoot)
+		}
+		seen[serviceID] = serviceRoot
+		if err := validateServiceSchemas(prepared.PackageDir, service); err != nil {
+			return RecursiveResult{}, fmt.Errorf("validate service %s schemas: %w", serviceRoot, err)
+		}
+		descriptorPath := filepath.Join(descriptorDir, fmt.Sprintf("%03d-%s.protoset", idx, serviceID))
+		descriptor, err := compileServiceDescriptorAt(descriptorPath, service)
+		if err != nil {
+			return RecursiveResult{}, fmt.Errorf("compile service %s descriptor: %w", serviceRoot, err)
+		}
+		candidates = append(candidates, recursiveServiceCandidate{
+			ServiceID:  serviceID,
+			Prepared:   servicePrepared,
+			Service:    service,
+			Descriptor: descriptor,
+		})
+		manifests[serviceID] = service.Manifest
+	}
+
+	result := RecursiveResult{
+		Services:           make([]domain.Service, 0, len(candidates)),
+		ServiceCount:       len(candidates),
+		Manifests:          manifests,
+		RestartedInstances: map[string][]string{},
+		RestartErrors:      map[string][]string{},
+	}
+	for _, candidate := range candidates {
+		serviceDir := filepath.Join(i.DataDir, "artifacts", "services", candidate.ServiceID)
+		commitDir, finalPackageDir, err := stageServiceCommit(candidate.Prepared, runtimeDir, candidate.Descriptor, staging)
+		if err != nil {
+			return result, fmt.Errorf("stage service %s: %w", candidate.ServiceID, err)
+		}
+		serviceOpts := opts
+		serviceOpts.ServiceID = candidate.ServiceID
+		svc, err := i.buildImportedService(ctx, serviceOpts, candidate.Prepared, candidate.Service, candidate.Descriptor.Result, serviceDir, finalPackageDir)
+		if err != nil {
+			return result, fmt.Errorf("build service %s: %w", candidate.ServiceID, err)
+		}
+		stored, err := i.commitImportedService(ctx, svc, serviceDir, commitDir)
+		if err != nil {
+			return result, fmt.Errorf("commit service %s: %w", candidate.ServiceID, err)
+		}
+		result.Services = append(result.Services, stored)
+	}
+	return result, nil
+}
+
+func validateServiceSchemas(packageDir string, service preparedService) error {
+	serviceRootDir := filepath.Join(packageDir, filepath.FromSlash(service.ServiceRoot))
+	if service.Manifest.ConfigSchema != "" {
+		if err := validatePackageFile(serviceRootDir, service.Manifest.ConfigSchema, "configSchema"); err != nil {
+			return err
+		}
+	}
+	if service.Manifest.SecretSchema != "" {
+		if err := validatePackageFile(serviceRootDir, service.Manifest.SecretSchema, "secretSchema"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func replaceLocalExampleSDK(runtimeDir string) error {
