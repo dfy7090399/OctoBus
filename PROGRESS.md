@@ -269,17 +269,17 @@
   - 验收标准：无无关改动；无敏感或生成产物进入待提交范围。
   - 完成总结：已完成工作树和产物审计。初始 `git status --short --branch` 显示分支 `feat/recursive-service-import` 与 `origin/feat/recursive-service-import` 同步且无待提交 diff；`git diff --stat` 无输出。`git status --short --ignored` 仅发现 `.task/`、`bin/`、`coverage/`、SDK/example `node_modules`、SDK `dist` 和 npm platform `bin` 等忽略产物，已运行 `task clean` 清理；残留旧 `sdk/coverage/` 已单独删除。复查 `git status --short --ignored` 无输出。`find . -maxdepth 3 \( -name node_modules -o -name coverage -o -name bin -o -name '*.tgz' -o -name '*.log' \) -print` 剩余的 `services/*/bin`、`examples/*/bin` 和 `npm/octobus/bin` 均为 `git ls-files` 跟踪的服务/示例入口目录，不是待提交生成产物。
 
-- [ ] 7.2 运行完整 focused 和 e2e 验证
+- [x] 7.2 运行完整 focused 和 e2e 验证
   - 依赖：7.1。
   - 工作内容：按计划运行所有 focused tests、Node tests 和 e2e。
   - 可并行子任务：
-    - [ ] 可并行：`go test ./internal/cli ./internal/admin ./internal/packageimport`
-    - [ ] 可并行：`go test ./internal/integration`
-    - [ ] 可并行：`node --test services/tests/validate-service-package.test.mjs`
-    - [ ] 可并行：`go test ./tests/e2e -count=1`
+    - [x] 可并行：`go test ./internal/cli ./internal/admin ./internal/packageimport`
+    - [x] 可并行：`go test ./internal/integration`
+    - [x] 可并行：`node --test services/tests/validate-service-package.test.mjs`
+    - [x] 可并行：`go test ./tests/e2e -count=1`
   - 测试方案：上述命令全部执行。
   - 验收标准：命令全部通过；失败时完成总结记录关键错误和下一步定位点。
-  - 完成总结：待完成。
+  - 完成总结：已完成完整 focused、Node 和 e2e 验证。验证命令：`go test ./internal/cli ./internal/admin ./internal/packageimport`，结果通过；`go test ./internal/integration`，结果通过；`node --test services/tests/validate-service-package.test.mjs`，16 个 Node 测试全部通过；首次直接运行 `go test ./tests/e2e -count=1` 因 7.1 清理后缺少本地 SDK build 输出 `sdk/dist/cli.js` 失败，按 Taskfile 前置补跑 `task sdk:build` 后重跑 `go test ./tests/e2e -count=1`，结果通过 `ok octobus/tests/e2e 56.561s`。复查 `git status --short --ignored` 仅有忽略的 `.task/`、`sdk/dist/`、`sdk/node_modules/`，无待提交生成产物。
 
 - [ ] 7.3 运行 Task 完整门禁
   - 依赖：7.2。
