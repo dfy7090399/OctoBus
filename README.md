@@ -51,6 +51,21 @@ The npm package installs the `octobus` binary only. Normal service import and
 runtime flows still require `node`, `npm`, `protoc`, and `git` as described
 below.
 
+### Run with Docker
+
+The Docker image includes the `octobus` binary and the runtime dependencies used
+for normal service import and instance startup flows.
+
+```bash
+docker run --rm \
+  -p 9000:9000 \
+  -v octobus-data:/var/lib/octobus \
+  ghcr.io/chaitin/octobus:latest
+```
+
+The container listens on `0.0.0.0:9000` by default and stores daemon state under
+`/var/lib/octobus`.
+
 ### Build from a checkout
 
 After the first checkout, build the binary:

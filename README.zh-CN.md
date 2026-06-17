@@ -27,6 +27,21 @@ service package 默认使用 `long-running` 运行模式：instance 创建或启
 
 ## 启动 daemon
 
+### 使用 Docker 运行
+
+Docker 镜像内包含 `octobus` binary，以及常规 service 导入和 instance 启动流程需要的运行时依赖。
+
+```bash
+docker run --rm \
+  -p 9000:9000 \
+  -v octobus-data:/var/lib/octobus \
+  ghcr.io/chaitin/octobus:latest
+```
+
+容器默认监听 `0.0.0.0:9000`，daemon 状态保存在 `/var/lib/octobus`。
+
+### 从 checkout 构建
+
 首次 checkout 后先构建 binary：
 
 ```bash
